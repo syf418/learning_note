@@ -5,18 +5,15 @@ warnings.filterwarnings(action='ignore')
 
 from warnings import showwarning
 from pandas import DataFrame
-import seaborn as sns
 import sys
 import math
-import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['SimHei']  #用来正常显示中文标签
-plt.rcParams['axes.unicode_minus'] = False  #用来正常显示负号
 
 from sklearn.cluster import KMeans
 from sklearn.neighbors import KNeighborsRegressor
-import joblib
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
 
-# user defined module
+# self defined module
 from userDefinedError import NonSupportError, dataTypeError
 
 def cosine_similarity(vector_a, vector_b):
@@ -92,7 +89,7 @@ class missing_value_processing():
         '''
         if method == "COA":
             '''
-            常用策略：找到最相关指标，根据此指标排序，对缺失指标采用ffill策略填充。(可考虑用前后均值优化等)
+            常用策略：找到最相关指标，根据此指标排序，对缺失指标采用ffill策略填充。(可考虑用窗口均值优化等)
             注意：当排序后的前几个值为空时，ffill的填充结果仍为空！
             '''
             corr = self.data.corr()
@@ -145,9 +142,11 @@ class missing_value_processing():
         else:
             raise NonSupportError
 
-    def kmeans_filling(self, n_clusters=5, int_type=False, user_defined_cols=''):
+        return self.data
+
+    def kmeans_filling(self, n_clusters=5, int_type=False, user_defined_cols:"list"=[]):
         # 待添加模型保存和预测阶段处理过程
-        if user_defined_cols == "":
+        if len(user_defined_cols) == 0:
             useful_cols = [col for col in self.data.columns.tolist() if self.data[col].dtype != object]
         else:
             for c in user_defined_cols:
@@ -179,9 +178,49 @@ class missing_value_processing():
 
         return self.data
 
+    def regression_predict_filling(self, method="rf", feature_cols:"list"=[], int_type=False):
+        # 待添加模型保存和预测阶段处理过程
+        if len(feature_cols) == 0:
+            feature_cols = [col for col in self.data.columns.tolist() if self.data[col].dtype != object
+                                            and col not in self.cols]
+        else:
+            for c in feature_cols:
+                if self.data[c].dtype == object:
+                    raise dataTypeError
+        for col in self.cols:
+            df_nan = self.data[self.data[col].isnull()]
+            # data check
+            df_dropna = self.data[~self.data[col].isnull()][feature_cols + [col]].dropna()
+            if len(df_dropna) < 5:  # 目前为方便测试，阈值较小，后续需调大
+                raise BaseException("用于计算的特征列缺失较严重，有效样本不足！")
+            if len(df_nan[feature_cols].dropna()) < len(df_nan):
+                raise BaseException("特征数据存在缺失，无法预测！请预先进行缺失值填充或重新选择有效特征！")
+            else:
+                if method == "lr":
+                    model = KMeans(n_clusters=n_clusters)
+                elif method == "rf":
+                    model = RandomForestRegressor()
+                elif method == "gbdt":
+                    model = GradientBoostingRegressor()
+                elif method == "knn":
+                    model = KNeighborsRegressor()
+                else:
+                    raise NonSupportError
+                # fit
+                model.fit(df_dropna[feature_cols], df_dropna[col])
+                df_nan[col] = model.predict(df_nan[feature_cols])
+                for i in range(len(df_nan)):
+                    index_ = df_nan.index.values[i]
+                    if int_type:
+                        self.data.loc[index_, col] = int(df_nan.iloc[i][col])
+                    else:
+                        self.data.loc[index_, col] = round(df_nan.iloc[i][col], 4)
+        return self.data
 
-
-
+    def create_virtual_feature(self):
+        for col in self.cols:
+            self.data[col+"_virtual"] = self.data[col].apply(lambda x: 1 if math.isnan(x) else 0)
+        return self.data
 
 
 if __name__ == "__main__":
@@ -192,7 +231,7 @@ if __name__ == "__main__":
     df = pd.DataFrame()
     df["a"] = np.random.randint(0,20,8)
     df["b"] = [1,2,3,5,np.NaN,6,np.NaN,9]
-    df["c"] = [np.NaN,np.NaN,1.8,5,np.NaN,3.6,np.NaN,np.NaN]
+    df["c"] = [np.NaN,6,1.8,5,4,3.6,np.NaN,7]
     df["d"] = range(8)
     df["e"] = [1,2,2,3,5,6,7,8]
     print("df:\n", df)
@@ -212,13 +251,25 @@ if __name__ == "__main__":
             print("\t", df_m2)
 
     # hot card
-    if 0:
+    if 1:
         m3 = missing_value_processing(df.copy(), ["b", "c"])
-        df_m3 = m3.hot_card_filling(method="COS")
+        df_m3 = m3.hot_card_filling(method="COA")
         print("df_m3:", df_m3)
 
     # k-means
-    if 1:
+    if 0:
         m4 = missing_value_processing(df.copy(), ["b", "c"])
         df_m4 = m4.kmeans_filling(n_clusters=3, user_defined_cols=["a", "d", "e"])
         print("df_m4:", df_m4)
+
+    # regression
+    if 0:
+        m5 = missing_value_processing(df.copy(), ["b", "c"])
+        df_m5 = m5.regression_predict_filling(method="gbdt", feature_cols=["a", "d", "e"])
+        print("df_m5:", df_m5)
+
+    # virtual
+    if 0:
+        m6 = missing_value_processing(df.copy(), ["b", "c"])
+        df_m6 = m6.create_virtual_feature()
+        print("df_m6:", df_m6)
