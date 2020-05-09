@@ -3,6 +3,8 @@
 import warnings
 warnings.filterwarnings(action='ignore')
 
+# 待补充：线性插值/多重插补/极大似然等
+
 from warnings import showwarning
 from pandas import DataFrame
 import sys
@@ -12,6 +14,7 @@ from sklearn.cluster import KMeans
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression
+from scipy.interpolate import lagrange
 
 # self defined module
 from userDefinedError import NonSupportError, dataTypeError
@@ -80,6 +83,13 @@ class missing_value_processing():
         else:
             raise NonSupportError
         return self.data
+
+    # def interpolation_filling(self, method=''):
+    #     if method == "":
+    #         def interp_lagrange(x, y, xx):
+    #             p = lagrange(x, y)
+    #             yy = p(xx)
+
 
     def hot_card_filling(self, method="COA", user_defined_cols=''):
         '''

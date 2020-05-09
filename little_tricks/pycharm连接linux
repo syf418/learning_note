@@ -1,0 +1,6 @@
+配置路径：
+    Tools -> Deployment -> Configuration
+    注意path的配置（有区分性）
+交互：
+    选中文件，右键选择Deployment...
+
